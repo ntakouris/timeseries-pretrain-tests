@@ -1,51 +1,41 @@
 import tensorflow.keras as keras
-from tqdm import tqdm 
+from tqdm import tqdm
 from sklearn.model_selection import KFold
 
-def pretrain_finetune_evaluate(ds_load_result, pretrain_model, bs=4, epochs=40, verbose=0, kf_splits=5, init_uncertainty_times=5):
-    train_ds, test_ds, preprocessing_layer, label_encoder = ds_load_result
 
-    x_train, y_train = train_ds
-    x_test, y_test = test_ds
-
+def pretrain_finetune_evaluate(x_train, y_train, x_val, y_val, x_test, y_test, n_classes, pretrain_model, bs=4, epochs=40, verbose=0, optimizer='adam'):
     input_shape = x_train.shape[1:]
-    output_len = len(label_encoder.classes_)
 
-    x_train = preprocessing_layer(x_train)
-    x_test = preprocessing_layer(x_test)
+    # pretrain
+    input_layer = keras.Input(shape=input_shape)
 
-    accuracies = []
-    kf = KFold(n_splits=kf_splits)
-    for train_idx, val_idx in tqdm(kf.split(x_train)):
-        for _ in range(init_uncertainty_times):
-            _x_train, _x_val = x_train[train_idx], x_train[val_idx]
-            _y_train, _y_val = y_train[train_idx], y_train[val_idx]
+    x = pretrain_model(input_layer)
 
-            # pretrain
-            input_layer = keras.Input(shape=input_shape)
+    output_layer = x
 
-            x = pretrain_model(input_layer)
+    model = keras.Model(input_layer, output_layer)
 
-            output_layer = x
+    model.compile(loss='mse', optimizer=optimizer)
+    callbacks = [keras.callbacks.EarlyStopping(
+        patience=3, restore_best_weights=True, monitor='loss')]
 
-            model = keras.Model(input_layer, output_layer)
+    model.fit(x_train, x_train, epochs=epochs,
+                batch_size=bs, callbacks=callbacks, verbose=verbose)
 
-            model.compile(loss='mae', optimizer='adam')
-            callbacks = [keras.callbacks.EarlyStopping(patience=3, restore_best_weights=True, monitor='loss')]
+    # fine tune
+    base = keras.Model(
+        model.inputs[0], model.get_layer('trunk').output)
+    output_layer = keras.layers.Dense(
+        n_classes, activation='softmax')(base.output)
 
-            model.fit(x_train, x_train, epochs=epochs, batch_size=2*bs, callbacks=callbacks, verbose=verbose)
+    model = keras.Model(base.inputs[0], output_layer)
+    model.compile(loss='sparse_categorical_crossentropy',
+                    optimizer=optimizer, metrics=['sparse_categorical_accuracy'])
 
-            # fine tune
-            base = keras.Model(model.inputs[0], model.get_layer('trunk').output)
-            output_layer = keras.layers.Dense(output_len, activation='softmax')(base.output)
+    callbacks = [keras.callbacks.EarlyStopping(
+        patience=5, restore_best_weights=True)]
+    model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=epochs,
+                batch_size=bs, callbacks=callbacks, verbose=verbose)
 
-            model = keras.Model(base.inputs[0], output_layer)
-            model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['sparse_categorical_accuracy'])
-
-            callbacks = [keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True)]
-            model.fit(_x_train, _y_train, validation_data=(_x_val, _y_val), epochs=epochs, batch_size=bs, validation_split=0.2, callbacks=callbacks, verbose=verbose)
-
-            _, eval_acc = model.evaluate(x_test, y_test, verbose=verbose)
-            accuracies += [eval_acc]
-
-    return accuracies
+    eval_acc = model.evaluate(x_test, y_test, verbose=verbose, return_dict=True)['sparse_categorical_accuracy']
+    return eval_acc
