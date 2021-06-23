@@ -1,15 +1,31 @@
 import tensorflow.keras as keras
-from tqdm import tqdm
-from sklearn.model_selection import KFold
+
+def lstm_autoencoder(input_x, lstm_units=8, lstm_layers=1, mlps=1, act='swish'):
+    x = input_x
+    for _ in range(lstm_layers-1):
+        x = keras.layers.LSTM(lstm_units, return_sequences=True)(x)
+
+    x = keras.layers.LSTM(lstm_units, name='trunk')(input_x)
+
+    x = keras.layers.RepeatVector(input_x.shape[1])(x)
+
+    for _ in range(lstm_layers):
+        x = keras.layers.LSTM(lstm_units, return_sequences=True)(x)
+
+    _mlp_dim = input_x.shape[-1]
+    for _ in range(mlps-1):
+        x = keras.layers.TimeDistributed(keras.layers.Dense(_mlp_dim, activation=act))(x)
+
+    return keras.layers.TimeDistributed(keras.layers.Dense(input_x.shape[-1]))(x)
 
 
-def pretrain_finetune_evaluate(x_train, y_train, x_val, y_val, x_test, y_test, n_classes, pretrain_model, bs=4, epochs=40, verbose=0, optimizer='adam'):
+def train_evaluate(x_train, y_train, x_val, y_val, x_test, y_test, n_classes, model, bs=4, epochs=40, verbose=0, optimizer='adam'):
     input_shape = x_train.shape[1:]
 
     # pretrain
     input_layer = keras.Input(shape=input_shape)
 
-    x = pretrain_model(input_layer)
+    x = model(input_layer)
 
     output_layer = x
 

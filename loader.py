@@ -31,10 +31,7 @@ def load_classification_dataset(ds_path=os.path.join(os.path.dirname(__file__), 
     label_encoder = sklearn.preprocessing.LabelEncoder()
     label_encoder.fit(train_y_labels)
 
-    train_y_np = label_encoder.transform(train_y_labels)
-    test_y_np = label_encoder.transform(test_y_labels)
-
-    train_ds = (train_x_np, train_y_np)
-    test_ds = (test_x_np, test_y_np)
+    train_ds = (train_x_np, train_y_labels)
+    test_ds = (test_x_np, test_y_labels)
 
     return train_ds, test_ds, preprocessing_layer, label_encoder

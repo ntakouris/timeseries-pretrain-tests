@@ -1,13 +1,22 @@
 import tensorflow.keras as keras
-from tqdm import tqdm 
-from sklearn.model_selection import KFold
 
-def train_evaluate(x_train, y_train, x_val, y_val, x_test, y_test, n_classes, trunk, bs=4, epochs=40, verbose=0, optimizer='adam'):
+def lstm_classifier(x, lstm_units=8, lstm_layers=1, mlp=[], act='swish'):
+    for _ in range(lstm_layers-1):
+        x = keras.layers.LSTM(lstm_units, return_sequences=True)(x)
+
+    x = keras.layers.LSTM(lstm_units)(x)
+
+    for d in mlp:
+        x = keras.layers.Dense(d, activation=act)(x)
+
+    return x
+
+def train_evaluate(x_train, y_train, x_val, y_val, x_test, y_test, n_classes, model, bs=4, epochs=40, verbose=0, optimizer='adam'):
     input_shape = x_train.shape[1:]
 
     input_layer = keras.Input(shape=input_shape)
     
-    x = trunk(input_layer)
+    x = model(input_layer)
 
     output_layer = keras.layers.Dense(n_classes, activation='softmax')(x)
 
